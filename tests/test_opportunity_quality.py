@@ -7,253 +7,331 @@ from src.quality.opportunity_quality import (
 )
 
 
-def test_removes_agents_radar_repository():
+def test_removes_agents_radar():
     items = [
         {
             "source": "github",
-            "title": "AI ecosystem report",
+            "title": "Spreadsheet automation report",
             "url": (
-                "https://github.com/example/"
+                "https://github.com/user/"
                 "agents-radar/issues/10"
             ),
-            "opportunity_score": 90,
         }
     ]
 
     assert filter_opportunities(
         items,
-        query="automation",
+        "spreadsheet automation",
     ) == []
 
 
 def test_removes_automatic_digest():
-    item = {
-        "source": "github",
-        "title": (
-            "OpenClaw Ecosystem Digest "
-            "2026-07-26"
-        ),
-        "url": (
-            "https://github.com/example/"
-            "project/issues/20"
-        ),
-    }
-
-    assert is_noise_opportunity(item)
-
-
-def test_removes_job_radar_batch():
-    item = {
-        "source": "github",
-        "title": (
-            "Job Radar batch — "
-            "2026-07-26"
-        ),
-        "url": (
-            "https://github.com/example/"
-            "jobs/issues/30"
-        ),
-    }
-
-    assert is_noise_opportunity(item)
+    assert is_noise_opportunity(
+        {
+            "title": (
+                "OpenClaw Ecosystem Digest "
+                "2026-07-26"
+            )
+        }
+    )
 
 
 def test_removes_duplicate_url():
     items = [
         {
             "source": "github",
-            "title": "Manual workflow",
+            "title": (
+                "Automate spreadsheet workflow"
+            ),
+            "body": (
+                "Spreadsheet automation."
+            ),
             "url": (
-                "https://github.com/example/"
-                "project/issues/1"
+                "https://github.com/test/"
+                "repo/issues/1"
             ),
         },
         {
             "source": "github",
-            "title": "Manual workflow duplicate",
+            "title": (
+                "Spreadsheet automation duplicate"
+            ),
+            "body": (
+                "Automate spreadsheet tasks."
+            ),
             "url": (
-                "https://github.com/example/"
-                "project/issues/1?ref=search"
+                "https://github.com/test/"
+                "repo/issues/1?source=search"
             ),
         },
     ]
 
-    result = filter_opportunities(
-        items,
-        query="manual workflow",
-    )
-
-    assert len(result) == 1
-
-
-def test_removes_unrelated_meta_issue():
-    items = [
-        {
-            "source": "github",
-            "title": (
-                "PRD: Rebuild internal "
-                "authentication architecture"
-            ),
-            "body": "OAuth and session handling.",
-            "url": (
-                "https://github.com/example/"
-                "project/issues/2"
-            ),
-            "opportunity_score": 90,
-        }
-    ]
-
-    assert filter_opportunities(
-        items,
-        query="spreadsheet automation",
-    ) == []
-
-
-def test_removes_unrelated_high_score_issue():
-    items = [
-        {
-            "source": "github",
-            "title": (
-                "Native Apple subscription manager"
-            ),
-            "body": (
-                "Build subscriptions for iOS."
-            ),
-            "url": (
-                "https://github.com/example/"
-                "project/issues/3"
-            ),
-            "opportunity_score": 99,
-        }
-    ]
-
-    assert filter_opportunities(
-        items,
-        query="spreadsheet automation",
-    ) == []
-
-
-def test_removes_unrelated_stackoverflow_question():
-    items = [
-        {
-            "source": "stackoverflow",
-            "title": (
-                "GitHub account has been flagged"
-            ),
-            "body": (
-                "My ticket has not been answered."
-            ),
-            "url": (
-                "https://stackoverflow.com/"
-                "questions/123/example"
-            ),
-            "opportunity_score": 60,
-        }
-    ]
-
-    assert filter_opportunities(
-        items,
-        query="spreadsheet automation",
-    ) == []
-
-
-def test_keeps_relevant_github_issue():
-    items = [
-        {
-            "source": "github",
-            "title": (
-                "Automate spreadsheet data entry"
-            ),
-            "body": (
-                "The current spreadsheet workflow "
-                "requires repetitive manual entry."
-            ),
-            "url": (
-                "https://github.com/example/"
-                "project/issues/4"
-            ),
-            "opportunity_score": 55,
-        }
-    ]
-
-    result = filter_opportunities(
-        items,
-        query="spreadsheet data entry",
-    )
-
-    assert len(result) == 1
-
-
-def test_keeps_relevant_stackoverflow_result():
-    items = [
-        {
-            "source": "stackoverflow",
-            "title": (
-                "Python automation script fails"
-            ),
-            "body": (
-                "The Python workflow raises an "
-                "error during automation."
-            ),
-            "url": (
-                "https://stackoverflow.com/"
-                "questions/456/example"
-            ),
-            "opportunity_score": 40,
-        }
-    ]
-
-    result = filter_opportunities(
-        items,
-        query="python automation error",
-    )
-
-    assert len(result) == 1
-
-
-def test_automation_is_not_stopword():
-    assert "automation" in query_tokens(
-        "spreadsheet automation"
-    )
-
-
-def test_calculates_query_relevance():
-    item = {
-        "title": (
-            "Automate repetitive "
-            "spreadsheet data entry"
+    assert len(
+        filter_opportunities(
+            items,
+            "spreadsheet automation",
         )
-    }
-
-    relevance = calculate_relevance(
-        item,
-        "spreadsheet data entry",
-    )
-
-    assert relevance == 1.0
+    ) == 1
 
 
-def test_requires_multiple_matches_for_long_query():
-    unrelated = {
-        "title": "Customer portal redesign",
-        "body": "New colors and navigation.",
-    }
-
-    relevant = {
+def test_derived_fields_cannot_create_relevance():
+    item = {
+        "source": "github",
         "title": (
-            "Customer support workflow automation"
+            "Native Apple subscription manager"
         ),
         "body": (
-            "Automate customer support tickets."
+            "Manage Apple subscriptions."
+        ),
+        "pain_summary": (
+            "spreadsheet automation"
+        ),
+        "problem": (
+            "spreadsheet automation"
         ),
     }
 
     assert not is_query_relevant(
-        unrelated,
+        item,
+        "spreadsheet automation",
+    )
+
+
+def test_removes_apple_subscription_manager():
+    item = {
+        "source": "github",
+        "title": (
+            "Spec: Native Apple "
+            "subscription manager"
+        ),
+        "body": (
+            "Subscriptions, payments and "
+            "mobile purchase management."
+        ),
+    }
+
+    assert not is_query_relevant(
+        item,
+        "spreadsheet automation",
+    )
+
+
+def test_removes_unrelated_support_ticket():
+    item = {
+        "source": "stackoverflow",
+        "title": (
+            "GitHub account has been flagged"
+        ),
+        "body": (
+            "Support ticket is unanswered."
+        ),
+    }
+
+    assert not is_query_relevant(
+        item,
         "customer support automation",
     )
 
-    assert is_query_relevant(
-        relevant,
+
+def test_removes_generic_client_manager():
+    item = {
+        "source": "github",
+        "title": (
+            "Build WhatsApp client "
+            "request manager"
+        ),
+        "body": (
+            "Manage messages and products."
+        ),
+    }
+
+    assert not is_query_relevant(
+        item,
         "customer support automation",
     )
+
+
+def test_keeps_google_sheets_automation():
+    item = {
+        "source": "github",
+        "title": (
+            "Configure Google Sheets "
+            "writeback automation"
+        ),
+        "body": (
+            "Automate spreadsheet updates "
+            "and data synchronization."
+        ),
+    }
+
+    assert is_query_relevant(
+        item,
+        "spreadsheet automation",
+    )
+
+
+def test_keeps_customer_support_automation():
+    item = {
+        "source": "github",
+        "title": (
+            "Automate customer support tickets"
+        ),
+        "body": (
+            "Customer support agents need "
+            "ticket automation."
+        ),
+    }
+
+    assert is_query_relevant(
+        item,
+        "customer support automation",
+    )
+
+
+def test_keeps_repetitive_data_entry():
+    item = {
+        "source": "github",
+        "title": (
+            "Automate repetitive data entry"
+        ),
+        "body": (
+            "Data entry is repetitive "
+            "and requires manual work."
+        ),
+    }
+
+    assert is_query_relevant(
+        item,
+        "repetitive data entry",
+    )
+
+
+def test_removes_repetitive_algorithm_input():
+    item = {
+        "source": "github",
+        "title": (
+            "Algorithm is slow on "
+            "repetitive input"
+        ),
+        "body": (
+            "Collision chain performance."
+        ),
+    }
+
+    assert not is_query_relevant(
+        item,
+        "repetitive data entry",
+    )
+
+
+def test_keeps_python_automation_error():
+    item = {
+        "source": "stackoverflow",
+        "title": (
+            "Python automation script error"
+        ),
+        "body": (
+            "The Python workflow fails "
+            "during automation."
+        ),
+    }
+
+    assert is_query_relevant(
+        item,
+        "python automation error",
+    )
+
+
+def test_normalizes_aliases():
+    tokens = query_tokens(
+        "Excel client ticket automation"
+    )
+
+    assert "spreadsheet" in tokens
+    assert "customer" in tokens
+    assert "support" in tokens
+    assert "automation" in tokens
+
+
+def test_calculates_full_relevance():
+    item = {
+        "title": (
+            "Spreadsheet automation"
+        ),
+        "body": (
+            "Automate spreadsheet work."
+        ),
+    }
+
+    assert calculate_relevance(
+        item,
+        "spreadsheet automation",
+    ) == 1.0
+
+def test_keeps_single_generic_query_after_pain_analysis():
+    item = {
+        "source": "github",
+        "title": "Manual reconciliation workflow",
+        "body": (
+            "The process is repetitive "
+            "and consumes significant time."
+        ),
+        "pain_types": [
+            "manual_work",
+            "repetitive_work",
+        ],
+    }
+
+    assert is_query_relevant(
+        item,
+        "automation",
+    )
+
+def test_blocks_repetitive_input_even_when_body_mentions_data_entry():
+    item = {
+        "source": "github",
+        "title": (
+            "Algorithm is slow on repetitive input"
+        ),
+        "body": (
+            "The benchmark contains data entry "
+            "structures and repetitive values."
+        ),
+    }
+
+    assert not is_query_relevant(
+        item,
+        "repetitive data entry",
+    )
+
+
+def test_blocks_data_issue_without_entry_in_title():
+    item = {
+        "source": "github",
+        "title": "Dead links in data directory",
+        "body": (
+            "The repetitive data entry process "
+            "contains broken links."
+        ),
+    }
+
+    assert not is_query_relevant(
+        item,
+        "repetitive data entry",
+    )
+
+
+def test_requires_customer_and_support_in_title():
+    item = {
+        "source": "github",
+        "title": "WhatsApp client request manager",
+        "body": (
+            "Automate customer support workflows."
+        ),
+    }
+
+    assert not is_query_relevant(
+        item,
+        "customer support automation",
+    )
+

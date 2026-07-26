@@ -24,6 +24,10 @@ AUTOMATIC_TITLE_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(
+        r"\bjob\s+radar\s+batch\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
         r"^\s*org\s+status\b",
         re.IGNORECASE,
     ),
@@ -33,10 +37,6 @@ AUTOMATIC_TITLE_PATTERNS = (
     ),
     re.compile(
         r"^\s*daily\s+security\s+audit\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\bjob\s+radar\s+batch\b",
         re.IGNORECASE,
     ),
     re.compile(
@@ -111,6 +111,15 @@ STOPWORDS = {
 }
 
 
+GENERIC_INTENT_TOKENS = {
+    "automation",
+    "repetition",
+    "manual",
+    "workflow",
+    "error",
+}
+
+
 TOKEN_ALIASES = {
     "automate": "automation",
     "automated": "automation",
@@ -138,8 +147,10 @@ TOKEN_ALIASES = {
     "customers": "customer",
 
     "helpdesk": "support",
-    "support": "support",
+    "ticket": "support",
+    "tickets": "support",
     "ticketing": "support",
+    "support": "support",
 
     "bug": "error",
     "bugs": "error",
@@ -167,17 +178,16 @@ TOKEN_ALIASES = {
 }
 
 
-TEXT_FIELDS = (
+# Somente conteúdo original da fonte.
+# Campos produzidos pelo analisador não podem validar relevância.
+SOURCE_TEXT_FIELDS = (
     "title",
     "body",
     "description",
     "summary",
     "text",
     "content",
-    "pain_summary",
-    "problem",
     "tags",
-    "repository",
 )
 
 
@@ -209,9 +219,7 @@ def normalize_text(value: Any) -> str:
         text,
     )
 
-    return " ".join(
-        text.split()
-    )
+    return " ".join(text.split())
 
 
 def canonical_token(token: str) -> str:
@@ -237,6 +245,175 @@ def extract_tokens(value: Any) -> set[str]:
     }
 
 
+def query_tokens(query: str) -> set[str]:
+    return extract_tokens(query)
+
+
+def source_text(item: dict[str, Any]) -> str:
+    values = []
+
+    for field in SOURCE_TEXT_FIELDS:
+        value = item.get(field)
+
+        if isinstance(
+            value,
+            (
+                list,
+                tuple,
+                set,
+            ),
+        ):
+            values.extend(
+                str(part)
+                for part in value
+            )
+
+        elif value:
+            values.append(str(value))
+
+    return " ".join(values)
+
+
+def relevance_evidence(
+    item: dict[str, Any],
+    query: str,
+) -> dict[str, Any]:
+    expected_tokens = query_tokens(query)
+
+    title_tokens = extract_tokens(
+        item.get("title")
+    )
+
+    document_tokens = extract_tokens(
+        source_text(item)
+    )
+
+    domain_tokens = (
+        expected_tokens
+        - GENERIC_INTENT_TOKENS
+    )
+
+    intent_tokens = (
+        expected_tokens
+        & GENERIC_INTENT_TOKENS
+    )
+
+    return {
+        "query_tokens": expected_tokens,
+        "domain_tokens": domain_tokens,
+        "intent_tokens": intent_tokens,
+        "title_matches": (
+            expected_tokens & title_tokens
+        ),
+        "domain_matches": (
+            domain_tokens & document_tokens
+        ),
+        "intent_matches": (
+            intent_tokens & document_tokens
+        ),
+        "document_matches": (
+            expected_tokens & document_tokens
+        ),
+    }
+
+
+def calculate_relevance(
+    item: dict[str, Any],
+    query: str,
+) -> float:
+    evidence = relevance_evidence(
+        item,
+        query,
+    )
+
+    expected = evidence["query_tokens"]
+
+    if not expected:
+        return 1.0
+
+    return round(
+        len(evidence["document_matches"])
+        / len(expected),
+        4,
+    )
+
+
+def is_query_relevant(
+    item: dict[str, Any],
+    query: str,
+) -> bool:
+    evidence = relevance_evidence(
+        item,
+        query,
+    )
+
+    query_token_set = evidence[
+        "query_tokens"
+    ]
+
+    if not query_token_set:
+        return True
+
+    domain_tokens = evidence[
+        "domain_tokens"
+    ]
+
+    intent_tokens = evidence[
+        "intent_tokens"
+    ]
+
+    # Consulta genérica isolada, como "automation".
+    # A análise de dor anterior determina a qualidade.
+    if (
+        not domain_tokens
+        and len(query_token_set) == 1
+    ):
+        return True
+
+    if domain_tokens:
+        # Os termos específicos da pesquisa precisam
+        # estar presentes no título da publicação.
+        #
+        # Exemplo:
+        # "repetitive data entry" exige "data" e "entry"
+        # no título. Apenas "repetitive input" não passa.
+        title_domain_matches = (
+            evidence["title_matches"]
+            & domain_tokens
+        )
+
+        if title_domain_matches != domain_tokens:
+            return False
+
+        # Confirma que todos os termos específicos
+        # também estão no conteúdo original.
+        if (
+            evidence["domain_matches"]
+            != domain_tokens
+        ):
+            return False
+
+        # Exige a intenção da pesquisa:
+        # automação, repetição, erro etc.
+        if (
+            intent_tokens
+            and not evidence["intent_matches"]
+        ):
+            return False
+
+        return True
+
+    # Consultas formadas apenas por termos genéricos.
+    required_matches = min(
+        2,
+        len(query_token_set),
+    )
+
+    return (
+        len(evidence["document_matches"])
+        >= required_matches
+    )
+
 def canonicalize_url(value: Any) -> str:
     raw_url = str(value or "").strip()
 
@@ -258,140 +435,6 @@ def canonicalize_url(value: Any) -> str:
 
     except ValueError:
         return raw_url.lower().rstrip("/")
-
-
-def query_tokens(query: str) -> set[str]:
-    return extract_tokens(query)
-
-
-def item_text(item: dict[str, Any]) -> str:
-    values = []
-
-    for field in TEXT_FIELDS:
-        value = item.get(field)
-
-        if isinstance(
-            value,
-            (
-                list,
-                tuple,
-                set,
-            ),
-        ):
-            values.extend(
-                str(part)
-                for part in value
-            )
-
-        elif value:
-            values.append(
-                str(value)
-            )
-
-    return " ".join(values)
-
-
-def calculate_relevance(
-    item: dict[str, Any],
-    query: str,
-) -> float:
-    expected_tokens = query_tokens(query)
-
-    if not expected_tokens:
-        return 1.0
-
-    document_tokens = extract_tokens(
-        item_text(item)
-    )
-
-    matches = expected_tokens.intersection(
-        document_tokens
-    )
-
-    return round(
-        len(matches) / len(expected_tokens),
-        4,
-    )
-
-
-def query_match_details(
-    item: dict[str, Any],
-    query: str,
-) -> dict[str, Any]:
-    expected_tokens = query_tokens(query)
-
-    title_tokens = extract_tokens(
-        item.get("title")
-    )
-
-    document_tokens = extract_tokens(
-        item_text(item)
-    )
-
-    title_matches = expected_tokens.intersection(
-        title_tokens
-    )
-
-    document_matches = expected_tokens.intersection(
-        document_tokens
-    )
-
-    return {
-        "query_tokens": expected_tokens,
-        "title_matches": title_matches,
-        "document_matches": document_matches,
-        "relevance": (
-            round(
-                len(document_matches)
-                / len(expected_tokens),
-                4,
-            )
-            if expected_tokens
-            else 1.0
-        ),
-    }
-
-
-def is_query_relevant(
-    item: dict[str, Any],
-    query: str,
-) -> bool:
-    details = query_match_details(
-        item,
-        query,
-    )
-
-    expected_count = len(
-        details["query_tokens"]
-    )
-
-    title_match_count = len(
-        details["title_matches"]
-    )
-
-    document_match_count = len(
-        details["document_matches"]
-    )
-
-    if expected_count == 0:
-        return True
-
-    if expected_count == 1:
-        return document_match_count >= 1
-
-    if expected_count == 2:
-        return (
-            title_match_count >= 1
-            or document_match_count >= 2
-        )
-
-    return (
-        title_match_count >= 2
-        or (
-            title_match_count >= 1
-            and document_match_count >= 2
-        )
-    )
 
 
 def is_noise_opportunity(
@@ -443,12 +486,10 @@ def is_irrelevant_meta_issue(
     ):
         return False
 
-    relevance = calculate_relevance(
+    return not is_query_relevant(
         item,
         query,
     )
-
-    return relevance == 0.0
 
 
 def opportunity_identity(
