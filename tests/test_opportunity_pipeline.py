@@ -4,6 +4,12 @@ from typing import Any
 from src.pipeline.opportunity_pipeline import (
     OpportunityPipeline,
 )
+from src.storage.opportunity_repository import (
+    CollectionRunRepository,
+)
+from src.storage.opportunity_repository import (
+    OpportunityRepository,
+)
 
 
 @dataclass
@@ -51,42 +57,6 @@ class FakeCollectorManager:
         )
 
 
-def test_pipeline_collects_analyzes_and_scores():
-    pipeline = OpportunityPipeline(
-        collector_manager=FakeCollectorManager()
-    )
-
-    result = pipeline.run(
-        query="automation",
-        limit_per_source=10,
-    )
-
-    assert result.collected_count == 2
-    assert result.pain_count == 1
-    assert result.opportunity_count == 1
-
-    opportunity = result.opportunities[0]
-
-    assert opportunity["id"] == "1"
-    assert opportunity["opportunity_score"] > 0
-
-
-def test_pipeline_filters_minimum_score():
-    pipeline = OpportunityPipeline(
-        collector_manager=FakeCollectorManager()
-    )
-
-    result = pipeline.run(
-        query="automation",
-        limit_per_source=10,
-        minimum_score=101,
-    )
-
-    assert result.collected_count == 2
-    assert result.pain_count == 1
-    assert result.opportunity_count == 0
-
-
 class FailedCollectorManager:
     def collect_all(
         self,
@@ -101,9 +71,98 @@ class FailedCollectorManager:
         )
 
 
-def test_pipeline_preserves_collection_errors():
-    pipeline = OpportunityPipeline(
-        collector_manager=FailedCollectorManager()
+def build_pipeline(
+    tmp_path,
+    collector_manager,
+):
+    database_path = (
+        tmp_path / "pipeline.db"
+    )
+
+    return OpportunityPipeline(
+        collector_manager=collector_manager,
+        repository=OpportunityRepository(
+            database_path
+        ),
+        run_repository=CollectionRunRepository(
+            database_path
+        ),
+    )
+
+
+def test_pipeline_collects_scores_and_persists(
+    tmp_path,
+):
+    pipeline = build_pipeline(
+        tmp_path,
+        FakeCollectorManager(),
+    )
+
+    result = pipeline.run(
+        query="automation",
+        limit_per_source=10,
+    )
+
+    assert result.collected_count == 2
+    assert result.pain_count == 1
+    assert result.opportunity_count == 1
+    assert result.persisted_count == 1
+    assert result.execution_status == "SUCCESS"
+    assert result.run_id is not None
+
+    assert pipeline.repository.count() == 1
+
+    opportunity = result.opportunities[0]
+
+    assert opportunity["id"] == "1"
+    assert opportunity["opportunity_score"] > 0
+
+
+def test_pipeline_filters_minimum_score(
+    tmp_path,
+):
+    pipeline = build_pipeline(
+        tmp_path,
+        FakeCollectorManager(),
+    )
+
+    result = pipeline.run(
+        query="automation",
+        limit_per_source=10,
+        minimum_score=101,
+    )
+
+    assert result.collected_count == 2
+    assert result.pain_count == 1
+    assert result.opportunity_count == 0
+    assert result.persisted_count == 0
+
+
+def test_pipeline_can_disable_persistence(
+    tmp_path,
+):
+    pipeline = build_pipeline(
+        tmp_path,
+        FakeCollectorManager(),
+    )
+
+    result = pipeline.run(
+        query="automation",
+        limit_per_source=10,
+        persist=False,
+    )
+
+    assert result.opportunity_count == 1
+    assert result.persisted_count == 0
+    assert pipeline.repository.count() == 0
+
+
+def test_pipeline_preserves_collection_errors(
+    tmp_path,
+):
+    pipeline = build_pipeline(
+        tmp_path,
+        FailedCollectorManager(),
     )
 
     result = pipeline.run(
@@ -115,4 +174,20 @@ def test_pipeline_preserves_collection_errors():
         "producthunt": "Unauthorized",
     }
 
+    assert (
+        result.execution_status
+        == "PARTIAL_SUCCESS"
+    )
+
     assert result.opportunity_count == 0
+
+    runs = (
+        pipeline.run_repository.list_recent()
+    )
+
+    assert len(runs) == 1
+
+    assert (
+        runs[0]["execution_status"]
+        == "PARTIAL_SUCCESS"
+    )

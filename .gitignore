@@ -7,3 +7,6 @@ venv/
 .venv/
 data/raw/*
 !data/raw/.gitkeep
+data/*.db
+data/*.db-shm
+data/*.db-wal

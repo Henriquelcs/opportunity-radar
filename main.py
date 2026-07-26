@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from typing import Any
 
 from src.pipeline.opportunity_pipeline import (
     OpportunityPipeline,
+)
+from src.storage.database import (
+    DEFAULT_DATABASE_PATH,
+)
+from src.storage.opportunity_repository import (
+    OpportunityRepository,
 )
 
 
@@ -17,23 +24,30 @@ def show_opportunity(
     Exibe uma oportunidade ranqueada.
     """
     print("\n" + "=" * 78)
+
     print(
         f"#{position} | "
-        f"SCORE: {item.get('opportunity_score', 0):.2f} | "
-        f"NÍVEL: {item.get('opportunity_level', 'unknown')}"
+        f"SCORE: "
+        f"{item.get('opportunity_score', 0):.2f} | "
+        f"NÍVEL: "
+        f"{item.get('opportunity_level', 'unknown')}"
     )
+
     print("=" * 78)
 
     print(
-        f"Fonte: {item.get('source', 'unknown')}"
+        f"Fonte: "
+        f"{item.get('source', 'unknown')}"
     )
 
     print(
-        f"Título: {item.get('title', 'Sem título')}"
+        f"Título: "
+        f"{item.get('title', 'Sem título')}"
     )
 
     print(
-        f"URL: {item.get('url', 'Não disponível')}"
+        f"URL: "
+        f"{item.get('url', 'Não disponível')}"
     )
 
     categories = item.get(
@@ -53,10 +67,14 @@ def show_opportunity(
     print(
         "Scores:"
         f" dor={item.get('pain_score', 0):.2f}"
-        f" urgência={item.get('urgency_score', 0):.2f}"
-        f" engajamento={item.get('engagement_score', 0):.2f}"
-        f" mercado={item.get('market_score', 0):.2f}"
-        f" confiança={item.get('confidence_score', 0):.2f}"
+        f" urgência="
+        f"{item.get('urgency_score', 0):.2f}"
+        f" engajamento="
+        f"{item.get('engagement_score', 0):.2f}"
+        f" mercado="
+        f"{item.get('market_score', 0):.2f}"
+        f" confiança="
+        f"{item.get('confidence_score', 0):.2f}"
     )
 
 
@@ -66,14 +84,16 @@ def build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         description=(
-            "Opportunity Radar — coleta e ranking "
-            "de oportunidades."
+            "Opportunity Radar — coleta, ranking "
+            "e persistência de oportunidades."
         )
     )
 
     parser.add_argument(
         "--query",
-        default="manual repetitive workflow automation",
+        default=(
+            "manual repetitive workflow automation"
+        ),
         help="Termo utilizado nas fontes.",
     )
 
@@ -88,14 +108,44 @@ def build_parser() -> argparse.ArgumentParser:
         "--minimum-score",
         type=float,
         default=0.0,
-        help="Pontuação mínima para exibição.",
+        help="Pontuação mínima.",
     )
 
     parser.add_argument(
         "--top",
         type=int,
         default=20,
-        help="Quantidade máxima de oportunidades.",
+        help="Quantidade máxima para exibição.",
+    )
+
+    parser.add_argument(
+        "--database",
+        default=str(DEFAULT_DATABASE_PATH),
+        help="Caminho do banco SQLite.",
+    )
+
+    parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Executa sem salvar oportunidades.",
+    )
+
+    parser.add_argument(
+        "--list-stored",
+        action="store_true",
+        help="Lista oportunidades já armazenadas.",
+    )
+
+    parser.add_argument(
+        "--source",
+        default=None,
+        help="Filtra oportunidades armazenadas por fonte.",
+    )
+
+    parser.add_argument(
+        "--level",
+        default=None,
+        help="Filtra oportunidades por nível.",
     )
 
     parser.add_argument(
@@ -107,47 +157,148 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def show_json(
+    payload: dict[str, Any],
+) -> None:
+    """
+    Exibe dados estruturados em JSON.
+    """
+    print(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        )
+    )
+
+
+def list_stored_opportunities(
+    database_path: Path,
+    minimum_score: float,
+    top: int,
+    source: str | None,
+    level: str | None,
+    json_output: bool,
+) -> None:
+    """
+    Lista oportunidades persistidas.
+    """
+    repository = OpportunityRepository(
+        database_path=database_path
+    )
+
+    opportunities = repository.list_ranked(
+        limit=top,
+        minimum_score=minimum_score,
+        source=source,
+        level=level,
+    )
+
+    if json_output:
+        show_json(
+            {
+                "stored_count": (
+                    repository.count()
+                ),
+                "returned_count": len(
+                    opportunities
+                ),
+                "opportunities": opportunities,
+            }
+        )
+        return
+
+    print("=" * 78)
+    print("OPPORTUNITY RADAR — BANCO DE DADOS")
+    print("=" * 78)
+
+    print(
+        f"Total armazenado: "
+        f"{repository.count()}"
+    )
+
+    print(
+        f"Resultados retornados: "
+        f"{len(opportunities)}"
+    )
+
+    for position, item in enumerate(
+        opportunities,
+        start=1,
+    ):
+        show_opportunity(position, item)
+
+
 def main() -> None:
     args = build_parser().parse_args()
 
-    pipeline = OpportunityPipeline()
+    database_path = Path(args.database)
+
+    if args.list_stored:
+        list_stored_opportunities(
+            database_path=database_path,
+            minimum_score=args.minimum_score,
+            top=args.top,
+            source=args.source,
+            level=args.level,
+            json_output=args.json,
+        )
+        return
+
+    pipeline = OpportunityPipeline(
+        database_path=database_path
+    )
 
     result = pipeline.run(
         query=args.query,
         limit_per_source=args.limit,
         minimum_score=args.minimum_score,
+        persist=not args.no_persist,
     )
 
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "collected_count": (
-                        result.collected_count
-                    ),
-                    "pain_count": result.pain_count,
-                    "opportunity_count": (
-                        result.opportunity_count
-                    ),
-                    "collection_errors": (
-                        result.collection_errors
-                    ),
-                    "opportunities": (
-                        result.opportunities[:args.top]
-                    ),
-                },
-                ensure_ascii=False,
-                indent=2,
-                default=str,
-            )
+        show_json(
+            {
+                "run_id": result.run_id,
+                "execution_status": (
+                    result.execution_status
+                ),
+                "collected_count": (
+                    result.collected_count
+                ),
+                "pain_count": result.pain_count,
+                "opportunity_count": (
+                    result.opportunity_count
+                ),
+                "persisted_count": (
+                    result.persisted_count
+                ),
+                "collection_errors": (
+                    result.collection_errors
+                ),
+                "opportunities": (
+                    result.opportunities[
+                        :args.top
+                    ]
+                ),
+            }
         )
-
         return
 
     print("=" * 78)
     print("OPPORTUNITY RADAR")
-    print("SPRINT 6 — OPPORTUNITY SCORING ENGINE")
+    print("SPRINT 7 — SQLITE PERSISTENCE")
     print("=" * 78)
+
+    print(
+        f"Status: {result.execution_status}"
+    )
+
+    print(
+        f"Execução registrada: "
+        f"{result.run_id}"
+    )
 
     print(
         f"Publicações coletadas: "
@@ -164,13 +315,20 @@ def main() -> None:
         f"{result.opportunity_count}"
     )
 
+    print(
+        f"Oportunidades persistidas: "
+        f"{result.persisted_count}"
+    )
+
     if result.collection_errors:
         print("\nFontes com erro:")
 
         for source, error in (
             result.collection_errors.items()
         ):
-            print(f"- {source}: {error}")
+            print(
+                f"- {source}: {error}"
+            )
 
     if not result.opportunities:
         print(
