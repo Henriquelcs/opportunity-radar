@@ -36,8 +36,16 @@ AUTOMATIC_TITLE_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(
+        r"\bjob\s+radar\s+batch\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*audit\s*/?\s*review\s+update\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
         r"\b(daily|weekly|monthly)\s+"
-        r"(digest|newsletter|briefing)\b",
+        r"(digest|newsletter|briefing|report)\b",
         re.IGNORECASE,
     ),
     re.compile(
@@ -82,14 +90,13 @@ STOPWORDS = {
     "are",
     "as",
     "at",
-    "automation",
     "da",
+    "das",
     "de",
     "do",
     "dos",
     "e",
     "em",
-    "error",
     "for",
     "from",
     "in",
@@ -101,6 +108,62 @@ STOPWORDS = {
     "the",
     "to",
     "with",
+}
+
+
+TOKEN_ALIASES = {
+    "automate": "automation",
+    "automated": "automation",
+    "automates": "automation",
+    "automating": "automation",
+    "automatic": "automation",
+    "automatically": "automation",
+    "automation": "automation",
+
+    "repeat": "repetition",
+    "repeated": "repetition",
+    "repeating": "repetition",
+    "repetitive": "repetition",
+    "repetition": "repetition",
+
+    "excel": "spreadsheet",
+    "sheet": "spreadsheet",
+    "sheets": "spreadsheet",
+    "spreadsheet": "spreadsheet",
+    "spreadsheets": "spreadsheet",
+
+    "client": "customer",
+    "clients": "customer",
+    "customer": "customer",
+    "customers": "customer",
+
+    "helpdesk": "support",
+    "support": "support",
+    "ticketing": "support",
+
+    "bug": "error",
+    "bugs": "error",
+    "error": "error",
+    "errors": "error",
+    "exception": "error",
+    "exceptions": "error",
+    "failure": "error",
+    "failures": "error",
+
+    "manual": "manual",
+    "manually": "manual",
+
+    "workflow": "workflow",
+    "workflows": "workflow",
+
+    "entry": "entry",
+    "entries": "entry",
+
+    "data": "data",
+
+    "integration": "integration",
+    "integrations": "integration",
+    "integrate": "integration",
 }
 
 
@@ -151,6 +214,29 @@ def normalize_text(value: Any) -> str:
     )
 
 
+def canonical_token(token: str) -> str:
+    normalized = normalize_text(token)
+
+    if not normalized:
+        return ""
+
+    return TOKEN_ALIASES.get(
+        normalized,
+        normalized,
+    )
+
+
+def extract_tokens(value: Any) -> set[str]:
+    normalized = normalize_text(value)
+
+    return {
+        canonical_token(token)
+        for token in normalized.split()
+        if len(token) >= 3
+        and token not in STOPWORDS
+    }
+
+
 def canonicalize_url(value: Any) -> str:
     raw_url = str(value or "").strip()
 
@@ -160,30 +246,22 @@ def canonicalize_url(value: Any) -> str:
     try:
         parts = urlsplit(raw_url)
 
-        path = parts.path.rstrip("/")
-
         return urlunsplit(
             (
                 parts.scheme.lower(),
                 parts.netloc.lower(),
-                path,
+                parts.path.rstrip("/"),
                 "",
                 "",
             )
         )
+
     except ValueError:
         return raw_url.lower().rstrip("/")
 
 
 def query_tokens(query: str) -> set[str]:
-    normalized = normalize_text(query)
-
-    return {
-        token
-        for token in normalized.split()
-        if len(token) >= 3
-        and token not in STOPWORDS
-    }
+    return extract_tokens(query)
 
 
 def item_text(item: dict[str, Any]) -> str:
@@ -204,36 +282,115 @@ def item_text(item: dict[str, Any]) -> str:
                 str(part)
                 for part in value
             )
+
         elif value:
             values.append(
                 str(value)
             )
 
-    return normalize_text(
-        " ".join(values)
-    )
+    return " ".join(values)
 
 
 def calculate_relevance(
     item: dict[str, Any],
     query: str,
 ) -> float:
-    tokens = query_tokens(query)
+    expected_tokens = query_tokens(query)
 
-    if not tokens:
+    if not expected_tokens:
         return 1.0
 
-    document_tokens = set(
-        item_text(item).split()
+    document_tokens = extract_tokens(
+        item_text(item)
     )
 
-    matches = tokens.intersection(
+    matches = expected_tokens.intersection(
         document_tokens
     )
 
     return round(
-        len(matches) / len(tokens),
+        len(matches) / len(expected_tokens),
         4,
+    )
+
+
+def query_match_details(
+    item: dict[str, Any],
+    query: str,
+) -> dict[str, Any]:
+    expected_tokens = query_tokens(query)
+
+    title_tokens = extract_tokens(
+        item.get("title")
+    )
+
+    document_tokens = extract_tokens(
+        item_text(item)
+    )
+
+    title_matches = expected_tokens.intersection(
+        title_tokens
+    )
+
+    document_matches = expected_tokens.intersection(
+        document_tokens
+    )
+
+    return {
+        "query_tokens": expected_tokens,
+        "title_matches": title_matches,
+        "document_matches": document_matches,
+        "relevance": (
+            round(
+                len(document_matches)
+                / len(expected_tokens),
+                4,
+            )
+            if expected_tokens
+            else 1.0
+        ),
+    }
+
+
+def is_query_relevant(
+    item: dict[str, Any],
+    query: str,
+) -> bool:
+    details = query_match_details(
+        item,
+        query,
+    )
+
+    expected_count = len(
+        details["query_tokens"]
+    )
+
+    title_match_count = len(
+        details["title_matches"]
+    )
+
+    document_match_count = len(
+        details["document_matches"]
+    )
+
+    if expected_count == 0:
+        return True
+
+    if expected_count == 1:
+        return document_match_count >= 1
+
+    if expected_count == 2:
+        return (
+            title_match_count >= 1
+            or document_match_count >= 2
+        )
+
+    return (
+        title_match_count >= 2
+        or (
+            title_match_count >= 1
+            and document_match_count >= 2
+        )
     )
 
 
@@ -291,16 +448,7 @@ def is_irrelevant_meta_issue(
         query,
     )
 
-    score = float(
-        item.get("opportunity_score")
-        or item.get("score")
-        or 0.0
-    )
-
-    return (
-        relevance == 0.0
-        and score < 65.0
-    )
+    return relevance == 0.0
 
 
 def opportunity_identity(
@@ -345,6 +493,12 @@ def filter_opportunities(
             continue
 
         if is_irrelevant_meta_issue(
+            opportunity,
+            query,
+        ):
+            continue
+
+        if not is_query_relevant(
             opportunity,
             query,
         ):
