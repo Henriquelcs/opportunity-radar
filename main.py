@@ -1,104 +1,191 @@
-from src.collectors.hackernews import (
-    HackerNewsCollector,
-)
-from src.config.settings import (
-    DEFAULT_COLLECTION_LIMIT,
-)
-from src.processors.pain_detector import (
-    filter_items_with_pain,
-)
-from src.processors.scorer import (
-    rank_opportunities,
+from __future__ import annotations
+
+import argparse
+import json
+from typing import Any
+
+from src.pipeline.opportunity_pipeline import (
+    OpportunityPipeline,
 )
 
 
 def show_opportunity(
     position: int,
-    item: dict,
+    item: dict[str, Any],
 ) -> None:
     """
-    Mostra uma oportunidade pontuada.
+    Exibe uma oportunidade ranqueada.
     """
-    print("-" * 70)
-    print(f"Ranking: #{position}")
-    print(f"ID: {item.get('id')}")
+    print("\n" + "=" * 78)
     print(
-        f"Título: "
-        f"{item.get('title', 'Sem título')}"
+        f"#{position} | "
+        f"SCORE: {item.get('opportunity_score', 0):.2f} | "
+        f"NÍVEL: {item.get('opportunity_level', 'unknown')}"
     )
+    print("=" * 78)
+
     print(
-        f"Score da oportunidade: "
-        f"{item['opportunity_score']}/100"
+        f"Fonte: {item.get('source', 'unknown')}"
     )
+
     print(
-        f"Classificação: "
-        f"{item['opportunity_level']}"
+        f"Título: {item.get('title', 'Sem título')}"
     )
+
     print(
-        f"Score de dor: "
-        f"{item['pain_score']}/80"
+        f"URL: {item.get('url', 'Não disponível')}"
     )
+
+    categories = item.get(
+        "pain_categories",
+        [],
+    )
+
     print(
-        f"Score de engajamento: "
-        f"{item['engagement_score']}/20"
+        "Dores: "
+        + (
+            ", ".join(categories)
+            if categories
+            else "Não classificadas"
+        )
     )
+
     print(
-        "Categorias: "
-        f"{', '.join(item['pain_categories'])}"
+        "Scores:"
+        f" dor={item.get('pain_score', 0):.2f}"
+        f" urgência={item.get('urgency_score', 0):.2f}"
+        f" engajamento={item.get('engagement_score', 0):.2f}"
+        f" mercado={item.get('market_score', 0):.2f}"
+        f" confiança={item.get('confidence_score', 0):.2f}"
     )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """
+    Cria os argumentos da aplicação.
+    """
+    parser = argparse.ArgumentParser(
+        description=(
+            "Opportunity Radar — coleta e ranking "
+            "de oportunidades."
+        )
+    )
+
+    parser.add_argument(
+        "--query",
+        default="manual repetitive workflow automation",
+        help="Termo utilizado nas fontes.",
+    )
+
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Limite de itens por fonte.",
+    )
+
+    parser.add_argument(
+        "--minimum-score",
+        type=float,
+        default=0.0,
+        help="Pontuação mínima para exibição.",
+    )
+
+    parser.add_argument(
+        "--top",
+        type=int,
+        default=20,
+        help="Quantidade máxima de oportunidades.",
+    )
+
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Exibe o resultado em JSON.",
+    )
+
+    return parser
 
 
 def main() -> None:
-    print("=" * 70)
+    args = build_parser().parse_args()
+
+    pipeline = OpportunityPipeline()
+
+    result = pipeline.run(
+        query=args.query,
+        limit_per_source=args.limit,
+        minimum_score=args.minimum_score,
+    )
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "collected_count": (
+                        result.collected_count
+                    ),
+                    "pain_count": result.pain_count,
+                    "opportunity_count": (
+                        result.opportunity_count
+                    ),
+                    "collection_errors": (
+                        result.collection_errors
+                    ),
+                    "opportunities": (
+                        result.opportunities[:args.top]
+                    ),
+                },
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
+        )
+
+        return
+
+    print("=" * 78)
     print("OPPORTUNITY RADAR")
-    print("ETAPA 4 — SCORE DE OPORTUNIDADES")
-    print("=" * 70)
+    print("SPRINT 6 — OPPORTUNITY SCORING ENGINE")
+    print("=" * 78)
 
-    collector = HackerNewsCollector()
-
-    collected_items = collector.collect(
-        limit=DEFAULT_COLLECTION_LIMIT
-    )
-
-    pain_items = filter_items_with_pain(
-        collected_items
-    )
-
-    ranked_items = rank_opportunities(
-        pain_items
+    print(
+        f"Publicações coletadas: "
+        f"{result.collected_count}"
     )
 
     print(
-        f"\nPublicações coletadas: "
-        f"{len(collected_items)}"
+        f"Publicações com dor: "
+        f"{result.pain_count}"
     )
 
     print(
-        f"Possíveis dores: "
-        f"{len(pain_items)}"
+        f"Oportunidades classificadas: "
+        f"{result.opportunity_count}"
     )
 
-    print(
-        f"Oportunidades pontuadas: "
-        f"{len(ranked_items)}"
-    )
+    if result.collection_errors:
+        print("\nFontes com erro:")
 
-    if not ranked_items:
+        for source, error in (
+            result.collection_errors.items()
+        ):
+            print(f"- {source}: {error}")
+
+    if not result.opportunities:
         print(
             "\nNenhuma oportunidade encontrada "
-            "nesta coleta."
+            "com os critérios atuais."
         )
         return
 
-    print("\nTOP OPORTUNIDADES")
-
     for position, item in enumerate(
-        ranked_items[:10],
+        result.opportunities[:args.top],
         start=1,
     ):
         show_opportunity(
-            position,
-            item,
+            position=position,
+            item=item,
         )
 
 
