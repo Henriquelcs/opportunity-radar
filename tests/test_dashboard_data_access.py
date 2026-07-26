@@ -127,3 +127,14 @@ def test_selected_database_filter(tmp_path: Path) -> None:
 
     assert dataset.databases["database_file"].tolist() == ["second.db"]
     assert dataset.opportunities["database_file"].unique().tolist() == ["second.db"]
+
+
+def test_curation_database_is_not_loaded_as_collection_database(
+    tmp_path: Path,
+) -> None:
+    collection_database = tmp_path / "radar.db"
+    curation_database = tmp_path / "opportunity_radar_curation.db"
+    create_database(collection_database)
+    curation_database.touch()
+
+    assert discover_databases(tmp_path) == [collection_database]

@@ -8,6 +8,9 @@ from typing import Iterable
 import pandas as pd
 
 
+CURATION_DATABASE_NAME = "opportunity_radar_curation.db"
+
+
 @dataclass(frozen=True)
 class RadarDataset:
     databases: pd.DataFrame
@@ -35,7 +38,9 @@ def discover_databases(data_dir: str | Path) -> list[Path]:
     return sorted(
         path
         for path in root.rglob("*.db")
-        if path.is_file() and path.stat().st_size > 0
+        if path.is_file()
+        and path.stat().st_size > 0
+        and path.name != CURATION_DATABASE_NAME
     )
 
 
@@ -111,7 +116,7 @@ def _series_or_default(
 
 
 def _string_series(series: pd.Series) -> pd.Series:
-    return series.fillna("").astype(str).str.strip()
+    return series.astype("string").fillna("").astype(str).str.strip()
 
 
 def _numeric_series(series: pd.Series) -> pd.Series:
@@ -380,12 +385,14 @@ def load_radar_data(
                     "columns": ", ".join(str(column) for column in frame.columns),
                 }
             )
-            if table in table_frames:
+            if table in table_frames and not frame.empty:
                 table_frames[table].append(_append_database_metadata(frame, path))
 
     def combine(name: str) -> pd.DataFrame:
-        frames = table_frames[name]
-        return pd.concat(frames, ignore_index=True, sort=False) if frames else pd.DataFrame()
+        frames = [frame for frame in table_frames[name] if not frame.empty]
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True, sort=False)
 
     raw_opportunities = combine("opportunities")
     raw_matches = combine("opportunity_query_matches")
