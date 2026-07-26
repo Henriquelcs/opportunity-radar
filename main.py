@@ -4,57 +4,72 @@ from src.collectors.hackernews import (
 from src.config.settings import (
     DEFAULT_COLLECTION_LIMIT,
 )
+from src.processors.pain_detector import (
+    filter_items_with_pain,
+)
 
 
-def show_item(item: dict) -> None:
+def show_opportunity(item: dict) -> None:
     """
-    Mostra uma publicação no terminal.
+    Mostra uma publicação com sinal de dor.
     """
-    print("-" * 60)
-
+    print("-" * 70)
+    print(f"ID: {item.get('id')}")
     print(
-        f"ID: {item.get('id')}"
+        f"Título: "
+        f"{item.get('title', 'Sem título')}"
+    )
+    print(
+        "Categorias de dor: "
+        f"{', '.join(item['pain_categories'])}"
     )
 
-    print(
-        f"Título: {item.get('title', 'Sem título')}"
-    )
+    print("Sinais encontrados:")
 
-    print(
-        f"Autor: {item.get('by', 'Desconhecido')}"
-    )
-
-    print(
-        f"Pontuação: {item.get('score', 0)}"
-    )
-
-    print(
-        f"Comentários: "
-        f"{item.get('descendants', 0)}"
-    )
+    for category, matches in item[
+        "pain_signals"
+    ].items():
+        print(
+            f"  - {category}: "
+            f"{', '.join(matches)}"
+        )
 
 
 def main() -> None:
-    """
-    Executa uma coleta simples para validação.
-    """
-    print("=" * 60)
+    print("=" * 70)
     print("OPPORTUNITY RADAR")
-    print("ETAPA 2 — COLETOR HACKER NEWS")
-    print("=" * 60)
+    print("ETAPA 3 — DETECTOR DE SINAIS DE DOR")
+    print("=" * 70)
 
     collector = HackerNewsCollector()
 
-    items = collector.collect(
+    collected_items = collector.collect(
         limit=DEFAULT_COLLECTION_LIMIT
     )
 
-    print(
-        f"\nPublicações coletadas: {len(items)}"
+    pain_items = filter_items_with_pain(
+        collected_items
     )
 
-    for item in items[:5]:
-        show_item(item)
+    print(
+        f"\nPublicações coletadas: "
+        f"{len(collected_items)}"
+    )
+
+    print(
+        f"Possíveis dores identificadas: "
+        f"{len(pain_items)}"
+    )
+
+    if not pain_items:
+        print(
+            "\nNenhum sinal de dor foi encontrado "
+            "nesta coleta."
+        )
+        return
+
+    for item in pain_items[:10]:
+        show_opportunity(item)
 
 
 if __name__ == "__main__":
