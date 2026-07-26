@@ -106,3 +106,11 @@ class OpportunityPipeline:
             finished_at = utc_now_iso()
             run_id = self.run_repository.create(query=query, limit_per_source=limit_per_source, collected_count=collected_count, pain_count=pain_count, opportunity_count=opportunity_count, persisted_count=persisted_count, collection_errors=collection_errors, started_at=started_at, finished_at=finished_at, execution_status=execution_status)
         return PipelineResult(collected_count=collected_count, pain_count=pain_count, opportunity_count=opportunity_count, persisted_count=persisted_count, opportunities=opportunities, collection_errors=collection_errors, execution_status=execution_status, run_id=run_id)
+
+# OPPORTUNITY_RADAR_MULTISOURCE_START
+from src.collectors.multisource_patch import (
+    install_multisource_collectors as _install_multisource_collectors,
+)
+
+_install_multisource_collectors()
+# OPPORTUNITY_RADAR_MULTISOURCE_END
