@@ -9,6 +9,7 @@ from src.processors.opportunity_scorer import score_opportunities
 from src.storage.database import DEFAULT_DATABASE_PATH
 from src.storage.opportunity_repository import CollectionRunRepository
 from src.storage.opportunity_repository import OpportunityRepository
+from src.quality.opportunity_quality import filter_opportunities
 
 def _collect_all_compatible(collector_manager, query: str, limit_per_source: int):
     import inspect
@@ -91,7 +92,8 @@ class OpportunityPipeline:
             pain_items = self._analyze_pain(collected_items)
             pain_count = len(pain_items)
             ranked_items = score_opportunities(pain_items)
-            opportunities = [item for item in ranked_items if item.get('opportunity_score', 0.0) >= minimum_score]
+            quality_items = filter_opportunities(ranked_items, query=query)
+            opportunities = [item for item in quality_items if item.get('opportunity_score', 0.0) >= minimum_score]
             opportunity_count = len(opportunities)
             if persist:
                 persisted_count = self.repository.upsert_many(opportunities)
