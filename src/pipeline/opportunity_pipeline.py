@@ -28,7 +28,7 @@ def _collect_all_compatible(collector_manager, query: str, limit_per_source: int
     if 'sources' in parameters:
         kwargs['sources'] = ['github', 'stackoverflow']
     if 'source_options' in parameters:
-        kwargs['source_options'] = {'github': {'query': query}, 'stackoverflow': {'query': query}}
+        kwargs['source_options'] = {'github': {'query': query}, 'stackoverflow': {'search_term': query}}
     if 'fail_fast' in parameters:
         kwargs['fail_fast'] = False
     return method(**kwargs)
