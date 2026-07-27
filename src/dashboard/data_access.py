@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
@@ -20,6 +20,7 @@ class RadarDataset:
     matches: pd.DataFrame
     collection_runs: pd.DataFrame
     inventory: pd.DataFrame
+    source_sync_runs: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 EMPTY_DATABASE_COLUMNS = [
@@ -345,6 +346,7 @@ def load_radar_data(
         "query_expansion_variations": [],
         "opportunity_query_matches": [],
         "collection_runs": [],
+        "source_sync_runs": [],
     }
 
     for path in database_paths:
@@ -414,4 +416,5 @@ def load_radar_data(
         matches=normalized_matches,
         collection_runs=combine("collection_runs"),
         inventory=pd.DataFrame(inventory_records),
+        source_sync_runs=combine("source_sync_runs"),
     )
