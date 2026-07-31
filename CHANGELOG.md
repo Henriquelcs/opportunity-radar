@@ -2,18 +2,33 @@
 
 ## Unreleased
 
-### Documentação
+- Fix duplicate Streamlit widget IDs by assigning stable keys to opportunity action buttons.
 
-- README profissional;
-- arquitetura e operação;
-- estado oficial do projeto;
-- contribuição e segurança.
+### Produto
+
+- definição oficial orientada até possível primeira receita;
+- separação entre dado, evidência, inferência, hipótese e decisão;
+- ciclo de vida e workspace de validação;
+- personal fit e métricas de qualidade;
+- registro de evidências, preço, custo, horas e receita;
+- tradução preservando original.
+
+### Dashboard
+
+- landing orientada à próxima decisão;
+- novas áreas Decisão, Validação e Métricas;
+- áreas operacionais preservadas.
 
 ### Engenharia
 
-- CI para Python 3.11 e 3.12;
-- quality gate do repositório;
-- template de pull request.
+- camada `src/product` isolada do Runner V2;
+- banco de produto SQLite não versionado;
+- testes de contrato, avaliação e persistência.
+
+## Landing Dashboard V1 — 2026-07-27
+
+- foco em renda extra;
+- cards e resumo operacional.
 
 ## Runner V2 — 2026-07-26
 

@@ -2,62 +2,133 @@
 
 [![CI](https://github.com/Henriquelcs/opportunity-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/Henriquelcs/opportunity-radar/actions/workflows/ci.yml)
 
-Sistema para transformar dores públicas encontradas em comunidades técnicas em oportunidades de solução com inteligência artificial e potencial de renda extra.
+O **Opportunity Radar** é um sistema pessoal de descoberta, priorização, validação e execução de oportunidades de renda extra para **Henrique Luiz Costa da Silva**.
 
-## Objetivo
+Ele coleta dores publicadas em fontes públicas, preserva o conteúdo original, organiza sinais e ajuda Henrique a escolher o menor teste possível antes de investir tempo e dinheiro.
+
+## Problema resolvido
+
+Ideias são abundantes. O risco está em escolher uma dor fraca, construir antes de validar, não encontrar comprador ou continuar investindo sem evidência.
 
 ```text
 Dores públicas
-→ coleta resiliente
-→ snapshot persistente
-→ classificação local
-→ oportunidades consolidadas
+→ sinais rastreáveis
 → curadoria humana
+→ oportunidade qualificada
+→ comprador identificado
+→ menor teste possível
+→ validação de interesse e preço
+→ decisão de continuar ou descartar
+→ plano de MVP
+→ possível primeira receita
+→ aprendizado registrado
 ```
 
-O projeto consulta somente conteúdo público. Ele não publica respostas nem interage com usuários das fontes.
+O produto **não garante** mercado, disposição a pagar, faturamento ou receita. Ele reduz incerteza e torna decisões rastreáveis.
 
-## Fontes integradas
+## Usuário principal
 
-| Fonte | Estado | Integração |
-|---|---:|---|
-| GitHub Issues | Ativa | Pesquisa de issues públicas |
-| Stack Overflow | Ativa | Stack Exchange API |
-| Software Recommendations | Ativa | Stack Exchange API |
-| Web Applications | Ativa | Stack Exchange API |
-| Hacker News | Ativa | Priorização de Ask HN |
-| DEV Community | Ativa | API pública; chave opcional |
-| Reddit | Adiada | OAuth e revisão de políticas |
+Henrique possui experiência com automações, APIs REST, Python, Google Colab, Apps Script, integrações, processos operacionais, suporte técnico, Streamlit, SQLite e ferramentas de IA. O sistema prioriza oportunidades compatíveis com essas capacidades, sem inventar tempo, orçamento ou acesso a compradores.
 
-## Arquitetura atual
+## O que entra na engine
+
+Conteúdo público proveniente de:
+
+| Fonte | Estado |
+|---|---:|
+| GitHub Issues | Ativa |
+| Stack Overflow | Ativa |
+| Software Recommendations | Ativa |
+| Web Applications | Ativa |
+| Hacker News | Ativa |
+| DEV Community | Ativa |
+| Reddit | Adiada |
+
+## O que a engine faz
+
+O Runner V2 sincroniza cada fonte uma vez por ciclo, persiste snapshots SQLite, reutiliza os dados nas variações, identifica sinais de dor, calcula o score de descoberta, remove duplicações operacionais e grava oportunidades candidatas.
 
 ```text
-APIs públicas
-    ↓
-Coletores resilientes
-    ↓
-Cache e snapshots SQLite
-    ↓
-Runner V2
-    ↓
-Expansões processadas localmente
-    ↓
-Banco operacional SQLite
-    ↓
-Dashboard Streamlit
+Fontes públicas
+→ coletores resilientes
+→ cache e snapshots SQLite
+→ Runner V2
+→ matching e score local
+→ deduplicação
+→ banco operacional
+→ camada de produto
+→ dashboard
 ```
 
-Características:
+## Score de descoberta
 
-- cada fonte é sincronizada uma vez por ciclo;
-- variações reutilizam o snapshot local;
-- HTTP 429 respeita `Retry-After`;
-- cache anterior mantém a operação disponível;
-- falha isolada gera estado degradado;
-- SQLite gerado não é versionado;
-- dashboard abre durante operação degradada.
+O score existente mede a **força heurística de um sinal público** com base em correspondência com consultas, sinais textuais de dor, engajamento e atualidade.
 
-Consulte [Arquitetura](docs/architecture.md) e [ADR do Runner V2](docs/decisions/0001-source-snapshot-runner-v2.md).
+Ele não mede:
+
+- tamanho de mercado;
+- comprador;
+- orçamento;
+- disposição a pagar;
+- custo real;
+- prazo real;
+- potencial de faturamento;
+- probabilidade de primeira receita.
+
+A dashboard separa score de descoberta, rastreabilidade, personal fit, prontidão do plano, evidência comercial e decisão humana.
+
+## Oportunidade qualificada
+
+Um item coletado nasce como **sinal**. Ele só é considerado oportunidade qualificada quando existe:
+
+1. decisão humana de que não é falso positivo;
+2. dor confirmada no ciclo de vida;
+3. possível comprador identificado;
+4. pelo menos uma evidência registrada que sustente a hipótese.
+
+## Curadoria
+
+A curadoria classifica sinais como pendentes, em análise, válidos ou falsos positivos. As decisões e seus motivos formam o dataset de avaliação usado para medir precision e calibrar o sistema.
+
+## Dado, evidência e hipótese
+
+- **Dado coletado:** conteúdo obtido diretamente da fonte.
+- **Evidência:** dado que sustenta ou contradiz uma conclusão.
+- **Inferência:** interpretação produzida pelo sistema.
+- **Hipótese:** afirmação ainda não validada.
+- **Estimativa:** aproximação com premissas declaradas.
+- **Decisão humana:** escolha realizada por Henrique.
+
+## Da oportunidade à renda
+
+A camada de produto registra:
+
+- usuário afetado e possível comprador;
+- problema e hipótese de monetização;
+- menor teste antes do desenvolvimento;
+- canal de acesso;
+- preço a testar;
+- critérios de continuidade e descarte;
+- evidências, entrevistas e contatos;
+- custos e horas investidas;
+- MVP;
+- receita real, quando existir;
+- aprendizados.
+
+## Dashboard
+
+A landing page apresenta:
+
+- próxima decisão recomendada;
+- score de descoberta com aviso de limite;
+- aderência ao perfil do Henrique;
+- rastreabilidade da origem;
+- ciclo de vida até primeira receita;
+- contrato de validação;
+- registro de evidências, eventos, preço, custo, horas e receita;
+- original e tradução em camadas separadas;
+- baseline de precision e falsos positivos;
+- áreas técnicas já existentes.
 
 ## Google Colab
 
@@ -77,70 +148,54 @@ python scripts/run_colab.py --mode dashboard
 python scripts/run_colab.py --mode all
 ```
 
-Consulte [Operação no Colab](docs/operations.md).
-
-## Segredos
-
-Configure no Colab Secrets:
-
-| Nome | Obrigatório | Uso |
-|---|---:|---|
-| `GITHUB_TOKEN`, `GH_TOKEN` ou `GITHUB_PAT` | Para commit/push | GitHub |
-| `DEVTO_API_KEY` | Não | DEV Community |
-| `STACKEXCHANGE_KEY` | Não | Stack Exchange |
-
-Nunca grave tokens em código, notebooks, bancos ou logs.
-
-## Desenvolvimento local
-
-Requisitos: Python 3.11 ou 3.12 e Git.
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements-dev.txt
-python -m compileall -q src scripts tests
-python -m pytest -q
-```
-
-## Estrutura principal
+## Bancos locais
 
 ```text
-.github/workflows/       integração contínua
-data/                    dados gerados, não versionados
-docs/                    arquitetura, operação e decisões
-scripts/run_colab.py     entrada operacional
-src/cache/               cache e snapshots
-src/collectors/          coletores
-src/operations/          Runner V2
-src/dashboard/           dashboard e curadoria
-tests/                   testes automatizados
+data/opportunity_radar_operational.db
+data/source_cache.db
+data/opportunity_radar_curation.db
+data/opportunity_radar_product.db
 ```
 
-## Roadmap
+Nenhum SQLite, cache, log, token ou arquivo temporário é versionado.
 
-1. ✅ Integrar novas fontes.
-2. ✅ Unificar a operação do Colab.
-3. 🟡 Profissionalizar o repositório.
-4. ⏳ Ajustar a dashboard.
+## Estrutura
 
-Estado detalhado: [docs/project_state.md](docs/project_state.md).
+```text
+src/cache/          cache e snapshots
+src/collectors/     fontes públicas
+src/operations/     Runner V2 preservado
+src/dashboard/      landing e áreas operacionais
+src/product/        contrato, avaliação e ciclo de validação
+docs/               decisões e contratos do produto
+tests/              testes técnicos e de produto
+```
 
-## Dados e privacidade
+## Limitações atuais
 
-- somente fontes públicas;
-- SQLite e caches fora do Git;
-- conteúdo original e URLs preservados;
-- curadoria humana obrigatória;
-- score automático não representa validação comercial definitiva.
+- o score ainda não possui baseline amplo de precision;
+- personal fit é inferência heurística;
+- comprador, preço e monetização dependem de validação humana;
+- tradução automática não foi ativada; a estrutura preserva original e permite tradução manual;
+- deduplicação semântica entre relatos diferentes ainda precisa evoluir;
+- quick tunnel não possui garantia de disponibilidade.
 
-## Contribuição e segurança
+## Diferenciação estratégica
 
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [SECURITY.md](SECURITY.md)
-- [CHANGELOG.md](CHANGELOG.md)
+O Opportunity Radar não pretende ser apenas um gerador de ideias. Ele foi desenhado para conduzir Henrique da descoberta à decisão comercial, evitando construção prematura e preservando o aprendizado de cada avanço ou descarte.
 
-## Licenciamento
+## Documentação
 
-O projeto ainda não possui licença de reutilização definida. Até que uma licença seja adicionada, o código permanece protegido pelos direitos autorais do autor.
+- [Definição do produto](docs/product_definition.md)
+- [Score](docs/scoring_model.md)
+- [Qualidade](docs/opportunity_quality.md)
+- [Ciclo de vida](docs/opportunity_lifecycle.md)
+- [Métricas](docs/product_metrics.md)
+- [Roadmap](docs/roadmap.md)
+- [Estado atual](docs/project_state.md)
+- [Operação](docs/operations.md)
+- [Arquitetura](docs/architecture.md)
+
+## Segurança
+
+Configure `GITHUB_TOKEN`, `GH_TOKEN` ou `GITHUB_PAT` no Colab Secrets. `DEVTO_API_KEY` e `STACKEXCHANGE_KEY` são opcionais. Nunca grave segredos no código ou nos bancos.

@@ -1,77 +1,49 @@
 # Arquitetura
 
-## Contexto
+## Princípio
 
-O Opportunity Radar identifica dores públicas e gera oportunidades candidatas sem multiplicar chamadas externas para cada variação.
-
-## Componentes
-
-### Coletores
-
-Consultam GitHub, Stack Overflow, Software Recommendations, Web Applications, Hacker News e DEV Community.
-
-### Cache
-
-`src/cache` mantém itens, snapshots, cooldowns e metadados de sincronização em SQLite não versionado.
-
-### Runner V2
-
-`src/operations/runner_v2.py` executa:
-
-1. migração idempotente;
-2. sincronização única por fonte;
-3. fallback para cache;
-4. expansão de consultas;
-5. matching local;
-6. scoring;
-7. deduplicação;
-8. persistência;
-9. consolidação do status.
-
-### Dashboard
-
-Apresenta visão consolidada, oportunidades, curadoria, variações, execuções e inventário técnico.
+A coleta resiliente é separada da decisão de produto. O Runner V2 permanece responsável por dados públicos; a camada de produto registra interpretação, validação e resultado humano.
 
 ## Fluxo
 
 ```text
-Fonte pública
-    ↓ uma vez por ciclo
-Coletor resiliente
-    ↓
-Snapshot SQLite
-    ↓ reutilizado
-Consultas e variações locais
-    ↓
-Qualificação e score
-    ↓
-Deduplicação
-    ↓
-Banco operacional
-    ↓
-Dashboard
+Fontes públicas
+→ coletores resilientes
+→ cache e snapshots SQLite
+→ Runner V2
+→ oportunidades candidatas
+→ curadoria humana
+→ avaliação de rastreabilidade e personal fit
+→ workspace de validação
+→ evidências e eventos comerciais
+→ decisão, MVP e possível primeira receita
 ```
 
-## Estados
+## Componentes
 
-- `SUCCESS`: fontes responderam com snapshot utilizável.
-- `DEGRADED`: existe cache ou dados válidos apesar de falhas.
-- `FAILED`: não existem dados suficientes.
-- `PARTIAL_SUCCESS`: aceito quando há resultado válido em operação degradada.
+### Runner V2
 
-## Resiliência
+Sincronização única por fonte, fallback, expansão local, matching, score, deduplicação e persistência. Não foi alterado nesta fase.
 
-- respeito a `Retry-After`;
-- cooldown em HTTP 429;
-- isolamento por fonte;
-- ausência de retry do pipeline inteiro;
-- DEV sem detalhes individuais em massa;
-- Hacker News com reutilização;
-- dashboard disponível em estado degradado.
+### Dashboard
 
-## Limites atuais
+Apresenta landing, decisão, validação, oportunidades, curadoria, métricas, consultas, execuções e área técnica.
 
-- matching e score precisam de refinamento;
-- tradução pertence à etapa 4;
-- indicadores ainda misturam histórico legado;
-- quick tunnel não possui garantia de disponibilidade.
+### Camada de produto
+
+`src/product/contracts.py` define conceitos e estados.
+
+`src/product/assessment.py` produz inferências rastreáveis sem converter hipóteses em fatos.
+
+`src/product/store.py` persiste workspaces, evidências, eventos e traduções em SQLite local não versionado.
+
+## Bancos
+
+- operacional: saída do Runner V2;
+- cache: snapshots;
+- curadoria: rótulos humanos;
+- produto: validação, eventos e tradução.
+
+## Rollback
+
+A camada de produto pode ser revertida sem alterar o Runner V2 ou os bancos operacionais. O banco de produto é isolado.
