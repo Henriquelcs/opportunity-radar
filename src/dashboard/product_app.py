@@ -60,6 +60,23 @@ DATA_DIR = Path(
 ).resolve()
 CURATION_DB = DATA_DIR / "opportunity_radar_curation.db"
 PRODUCT_DB = DATA_DIR / PRODUCT_DATABASE_NAME
+APP_VERSION = "2.1.0"
+ORIGINAL_CONTENT_FIELDS: tuple[str, ...] = (
+    "description",
+    "body",
+    "content",
+    "text",
+    "summary",
+    "excerpt",
+    "problem",
+)
+ORIGINAL_DATE_FIELDS: tuple[str, ...] = (
+    "published_at",
+    "created_at",
+    "updated_at",
+    "timestamp",
+    "collected_at",
+)
 
 
 CSS = """
@@ -122,7 +139,68 @@ CSS = """
 .small-muted {color:var(--radar-muted); font-size:.86rem;}
 div[data-testid="stVerticalBlockBorderWrapper"] {border-radius:18px; border-color:var(--radar-border);}
 div[data-testid="stDataFrame"] {border:1px solid rgba(148,163,184,.12); border-radius:14px; overflow:hidden;}
-@media (max-width:760px) {.radar-hero{border-radius:22px;padding:1.45rem}.radar-hero h1{font-size:2.25rem}}
+
+.opportunity-card {
+    border: 1px solid var(--radar-border);
+    border-radius: 20px;
+    padding: 1rem 1.05rem;
+    margin-bottom: .85rem;
+    background: linear-gradient(145deg, rgba(15,23,42,.72), rgba(15,23,42,.48));
+    transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.opportunity-card:hover {
+    transform: translateY(-1px);
+    border-color: rgba(99,230,190,.34);
+    box-shadow: 0 16px 36px rgba(0,0,0,.16);
+}
+.opportunity-card.selected {
+    border-color: rgba(99,230,190,.68);
+    box-shadow: 0 0 0 1px rgba(99,230,190,.18);
+}
+.opportunity-meta {
+    color: var(--radar-muted);
+    font-size: .83rem;
+    line-height: 1.5;
+}
+.detail-panel {
+    border: 1px solid rgba(99,230,190,.38);
+    border-radius: 24px;
+    padding: 1.2rem 1.3rem;
+    margin: .5rem 0 1.2rem;
+    background:
+      radial-gradient(circle at 92% 4%, rgba(116,167,255,.12), transparent 28%),
+      linear-gradient(145deg, rgba(99,230,190,.055), rgba(15,23,42,.55));
+}
+.detail-panel h2 {
+    margin: .45rem 0 .5rem;
+    letter-spacing: -.035em;
+    line-height: 1.15;
+}
+.original-content {
+    white-space: pre-wrap;
+    line-height: 1.65;
+    color: #d5deea;
+    border: 1px solid var(--radar-border);
+    border-radius: 16px;
+    padding: 1rem;
+    background: rgba(2,6,23,.34);
+}
+.build-footer {
+    margin-top: 2.4rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--radar-border);
+    color: var(--radar-muted);
+    font-size: .76rem;
+    text-align: center;
+}
+div[data-testid="stButton"] > button {
+    text-align: left;
+}
+@media (max-width:760px) {
+    .radar-hero{border-radius:22px;padding:1.45rem}
+    .radar-hero h1{font-size:2.25rem}
+    .detail-panel{padding:1rem;border-radius:18px}
+}
 </style>
 """
 
@@ -220,6 +298,48 @@ def _translation_for(
     return {} if rows.empty else rows.iloc[0].to_dict()
 
 
+def _first_text(row: pd.Series | dict[str, Any], fields: tuple[str, ...], fallback: str = "") -> str:
+    for field in fields:
+        value = _text(row.get(field))
+        if value:
+            return value
+    return fallback
+
+
+def _truncate(value: str, limit: int = 180) -> str:
+    normalized = re.sub(r"\s+", " ", value).strip()
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _git_commit_short() -> str:
+    git_dir = PROJECT_DIR / ".git"
+    head_path = git_dir / "HEAD"
+    try:
+        head = head_path.read_text(encoding="utf-8").strip()
+        if head.startswith("ref: "):
+            ref_path = git_dir / head.removeprefix("ref: ").strip()
+            commit = ref_path.read_text(encoding="utf-8").strip()
+        else:
+            commit = head
+    except OSError:
+        return "local"
+    return commit[:8] if commit else "local"
+
+
+def _activate_opportunity(key: str, *, reveal_details: bool = True) -> None:
+    st.session_state["selected_opportunity_key"] = key
+    st.session_state["show_opportunity_details"] = reveal_details
+
+
+def _selected_by_key(frame: pd.DataFrame, key: str) -> pd.Series | None:
+    if frame.empty or not key:
+        return None
+    rows = frame[frame["opportunity_key"].astype(str).eq(key)]
+    return None if rows.empty else rows.iloc[0]
+
+
 def _render_knowledge_block(kind: str, label: str, content: str) -> None:
     safe_label = html.escape(label)
     safe_content = html.escape(content or "Não registrado")
@@ -262,7 +382,7 @@ def _render_opportunity_table(frame: pd.DataFrame, height: int = 520) -> None:
     display = frame[columns].copy()
     st.dataframe(
         display,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=height,
         column_config={
@@ -270,7 +390,12 @@ def _render_opportunity_table(frame: pd.DataFrame, height: int = 520) -> None:
             "source": st.column_config.TextColumn("Fonte", width="small"),
             "discovery_score": st.column_config.NumberColumn("Score de descoberta", format="%.1f"),
             "personal_fit_label": st.column_config.TextColumn("Aderência ao Henrique"),
-            "traceability_index": st.column_config.ProgressColumn("Rastreabilidade", min_value=0, max_value=100, format="%d%%"),
+            "traceability_index": st.column_config.ProgressColumn(
+                "Rastreabilidade",
+                min_value=0,
+                max_value=100,
+                format="%d%%",
+            ),
             "lifecycle_label": st.column_config.TextColumn("Etapa"),
             "priority_bucket": st.column_config.TextColumn("Próxima decisão", width="medium"),
             "curation_label": st.column_config.TextColumn("Curadoria"),
@@ -279,12 +404,253 @@ def _render_opportunity_table(frame: pd.DataFrame, height: int = 520) -> None:
     )
 
 
+def _render_opportunity_detail(
+    row: pd.Series,
+    translations: pd.DataFrame,
+    workspace: dict[str, Any],
+    *,
+    widget_scope: str,
+) -> None:
+    key = str(row["opportunity_key"])
+    title = _text(row.get("title"), "Sinal sem título")
+    source = _text(row.get("source"), "Fonte não informada")
+    url = _text(row.get("url"))
+    original_content = _first_text(
+        row,
+        ORIGINAL_CONTENT_FIELDS,
+        "A fonte não forneceu descrição ou conteúdo adicional neste snapshot. "
+        "Use o botão de publicação original para ler o contexto completo.",
+    )
+    published_at = _first_text(row, ORIGINAL_DATE_FIELDS, "Data não informada")
+    translated_title = _text(_translation_for(translations, key, "title").get("translated_text"))
+    buyer_hypothesis = _text(
+        workspace.get("buyer_hypothesis"),
+        "Ainda não identificado. É uma hipótese que precisa de contato e evidência.",
+    )
+
+    st.markdown(
+        f"""
+        <section class="detail-panel">
+          <div class="kicker">Oportunidade selecionada</div>
+          <span class="chip chip-green">{html.escape(source)}</span>
+          <span class="chip">{html.escape(_text(row.get("lifecycle_label"), "Detectada"))}</span>
+          <h2>{html.escape(title)}</h2>
+          <div class="small-muted">Conteúdo original preservado · nenhuma hipótese comercial é apresentada como fato.</div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    action_columns = st.columns([1.15, 1.25, 2.6])
+    if url:
+        action_columns[0].link_button(
+            "Abrir publicação original",
+            url,
+            width="stretch",
+        )
+    else:
+        action_columns[0].button(
+            "Publicação indisponível",
+            disabled=True,
+            width="stretch",
+            key=f"missing_original_{widget_scope}_{key}",
+        )
+    if action_columns[1].button(
+        "Trabalhar nesta oportunidade",
+        type="primary",
+        width="stretch",
+        key=f"work_detail_{widget_scope}_{key}",
+    ):
+        _activate_opportunity(key)
+        st.toast("Oportunidade selecionada. Abra a aba Decisão para registrar o plano.", icon="🎯")
+    if action_columns[2].button(
+        "Fechar detalhes",
+        width="content",
+        key=f"close_detail_{widget_scope}_{key}",
+    ):
+        st.session_state["show_opportunity_details"] = False
+        st.rerun()
+
+    metric_columns = st.columns(4)
+    metric_columns[0].metric(
+        "Score de descoberta",
+        f"{_number(row.get('discovery_score')):.1f}",
+        help="Heurística do sinal. Não mede mercado, preço ou receita.",
+    )
+    metric_columns[1].metric(
+        "Aderência ao Henrique",
+        _text(row.get("personal_fit_label"), "Não demonstrada"),
+    )
+    metric_columns[2].metric(
+        "Rastreabilidade",
+        f"{int(_number(row.get('traceability_index')))}%",
+    )
+    metric_columns[3].metric(
+        "Próxima decisão",
+        _text(row.get("priority_bucket"), "Analisar"),
+    )
+
+    content_tab, radar_tab, traceability_tab = st.tabs(
+        ["Conteúdo", "Leitura do Radar", "Rastreabilidade"]
+    )
+    with content_tab:
+        if translated_title and translated_title != title:
+            st.markdown("#### Tradução registrada")
+            st.write(translated_title)
+            st.caption("A tradução é uma camada separada. O título original permanece preservado.")
+        st.markdown("#### Conteúdo original")
+        st.markdown(
+            f'<div class="original-content">{html.escape(original_content)}</div>',
+            unsafe_allow_html=True,
+        )
+
+    with radar_tab:
+        _render_knowledge_block(
+            "",
+            "Dado coletado",
+            f"Fonte: {source}. Título e URL originais foram preservados.",
+        )
+        _render_knowledge_block(
+            "evidence",
+            "Evidência atual",
+            (
+                f"Rastreabilidade {int(_number(row.get('traceability_index')))}%; "
+                f"sinais detectados: {_text(row.get('pain_categories'), 'não informados')}."
+            ),
+        )
+        _render_knowledge_block(
+            "inference",
+            "Inferência do sistema",
+            (
+                f"Aderência ao Henrique: {_text(row.get('personal_fit_label'), 'não demonstrada')}. "
+                f"Base: {_text(row.get('personal_fit_signals'), 'nenhum sinal identificado')}."
+            ),
+        )
+        _render_knowledge_block(
+            "hypothesis",
+            "Possível comprador — hipótese",
+            buyer_hypothesis,
+        )
+        _render_knowledge_block(
+            "decision",
+            "Próxima decisão humana",
+            _text(row.get("recommended_action"), "Analisar o contexto e decidir se vale investigar."),
+        )
+
+    with traceability_tab:
+        trace_columns = st.columns(2)
+        trace_columns[0].markdown("#### Origem")
+        trace_columns[0].write(f"**Fonte:** {source}")
+        trace_columns[0].write(f"**Data informada:** {published_at}")
+        trace_columns[0].write(
+            f"**Consulta original:** {_text(row.get('original_queries'), 'Não informada')}"
+        )
+        trace_columns[1].markdown("#### Classificação")
+        trace_columns[1].write(
+            f"**Curadoria:** {_text(row.get('curation_label'), 'Pendente')}"
+        )
+        trace_columns[1].write(
+            f"**Etapa:** {_text(row.get('lifecycle_label'), 'Detectada')}"
+        )
+        trace_columns[1].write(
+            f"**Categorias de dor:** {_text(row.get('pain_categories'), 'Não informadas')}"
+        )
+
+
+def _render_opportunity_browser(
+    frame: pd.DataFrame,
+    translations: pd.DataFrame,
+    workspaces: pd.DataFrame,
+    *,
+    widget_scope: str,
+    limit: int = 30,
+) -> None:
+    if frame.empty:
+        st.info("Nenhum sinal disponível para os filtros selecionados.")
+        return
+
+    selected_key = _text(st.session_state.get("selected_opportunity_key"))
+    selected_row = _selected_by_key(frame, selected_key)
+    if selected_row is not None and st.session_state.get("show_opportunity_details", False):
+        _render_opportunity_detail(
+            selected_row,
+            translations,
+            _workspace_for(workspaces, selected_key),
+            widget_scope=f"{widget_scope}_selected",
+        )
+        st.divider()
+
+    st.caption(
+        'Clique no título ou em "Ver oportunidade" para abrir o conteúdo, '
+        "a fonte original e a leitura rastreável do radar."
+    )
+    visible = frame.head(limit)
+    for position, (_, row) in enumerate(visible.iterrows(), start=1):
+        key = str(row["opportunity_key"])
+        title = _text(row.get("title"), "Sinal sem título")
+        source_name = _text(row.get("source"), "Fonte não informada")
+        selected_css = " selected" if key == selected_key else ""
+        st.markdown(
+            f'<div class="opportunity-card{selected_css}">'
+            f'<div class="opportunity-meta">#{position} · {html.escape(source_name)} · '
+            f'Score {_number(row.get("discovery_score")):.1f} · '
+            f'Aderência {html.escape(_text(row.get("personal_fit_label"), "—"))}</div>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        title_columns = st.columns([4.8, 1.2])
+        if title_columns[0].button(
+            title,
+            width="stretch",
+            key=f"title_open_{widget_scope}_{key}",
+            help="Abrir detalhes desta oportunidade",
+        ):
+            _activate_opportunity(key)
+            st.rerun()
+        if title_columns[1].button(
+            "Ver oportunidade",
+            type="primary",
+            width="stretch",
+            key=f"view_open_{widget_scope}_{key}",
+        ):
+            _activate_opportunity(key)
+            st.rerun()
+
+        metadata_columns = st.columns([1.15, 1.15, 1.25, 2.45])
+        metadata_columns[0].caption(
+            f"Etapa: {_text(row.get('lifecycle_label'), 'Detectada')}"
+        )
+        metadata_columns[1].caption(
+            f"Rastreabilidade: {int(_number(row.get('traceability_index')))}%"
+        )
+        metadata_columns[2].caption(
+            f"Curadoria: {_text(row.get('curation_label'), 'Pendente')}"
+        )
+        metadata_columns[3].caption(
+            _truncate(
+                _text(
+                    row.get("recommended_action"),
+                    "Analisar contexto e evidências.",
+                ),
+                150,
+            )
+        )
+
+    if len(frame) > limit:
+        st.info(
+            f"Exibindo as primeiras {limit} de {len(frame)} oportunidades. "
+            "Use os filtros ou a busca para localizar uma oportunidade específica."
+        )
+
+    with st.expander("Ver tabela compacta"):
+        _render_opportunity_table(frame)
+
 def _render_source_health(source_sync_runs: pd.DataFrame) -> None:
     overview = source_status_overview(source_sync_runs)
     if overview.empty:
         st.info("Nenhum estado de fonte disponível.")
     else:
-        st.dataframe(overview, use_container_width=True, hide_index=True)
+        st.dataframe(overview, width="stretch", hide_index=True)
 
 
 def _selected_row(frame: pd.DataFrame, key_prefix: str) -> pd.Series | None:
@@ -402,7 +768,7 @@ def _workspace_form(row: pd.Series, workspace: dict[str, Any]) -> None:
             placeholder="AAAA-MM-DD",
         )
         notes = st.text_area("Notas", value=_text(workspace.get("notes")))
-        submitted = st.form_submit_button("Salvar plano de validação", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("Salvar plano de validação", type="primary", width="stretch")
 
     if submitted:
         upsert_workspace(
@@ -451,7 +817,7 @@ def _translation_form(row: pd.Series, translations: pd.DataFrame) -> None:
             value=_text(translation.get("translated_text")),
             placeholder="Tradução manual nesta fase; URLs, IDs e código não devem ser alterados.",
         )
-        save_translation = st.form_submit_button("Salvar tradução", use_container_width=True)
+        save_translation = st.form_submit_button("Salvar tradução", width="stretch")
     if save_translation:
         upsert_translation(
             PRODUCT_DB,
@@ -486,7 +852,7 @@ def _evidence_and_event_forms(row: pd.Series) -> None:
             source_url = st.text_input("Fonte ou referência", placeholder="URL opcional")
             raw_excerpt = st.text_area("Trecho original", placeholder="Preserve o conteúdo literal quando necessário.")
             occurred_at = st.text_input("Data da evidência", placeholder="AAAA-MM-DD")
-            save_evidence = st.form_submit_button("Salvar evidência", use_container_width=True)
+            save_evidence = st.form_submit_button("Salvar evidência", width="stretch")
         if save_evidence:
             add_evidence(
                 PRODUCT_DB,
@@ -517,7 +883,7 @@ def _evidence_and_event_forms(row: pd.Series) -> None:
             cost_brl = numeric[2].number_input("Custo (R$)", min_value=0.0, value=0.0, step=10.0)
             event_notes = st.text_area("Notas do evento")
             event_date = st.text_input("Data do evento", placeholder="AAAA-MM-DD")
-            save_event = st.form_submit_button("Salvar evento", use_container_width=True)
+            save_event = st.form_submit_button("Salvar evento", width="stretch")
         if save_event:
             add_event(
                 PRODUCT_DB,
@@ -553,22 +919,56 @@ def _render_decision_card(row: pd.Series, *, widget_scope: str) -> None:
         unsafe_allow_html=True,
     )
     cols = st.columns(4)
-    cols[0].metric("Score de descoberta", f"{_number(row.get('discovery_score')):.1f}", help="Heurística do sinal. Não mede mercado, preço ou receita.")
-    cols[1].metric("Aderência ao Henrique", _text(row.get("personal_fit_label"), "Não demonstrado"), help="Inferência por correspondência com habilidades conhecidas.")
-    cols[2].metric("Rastreabilidade", f"{int(_number(row.get('traceability_index')))}%", help="Completude de origem, URL, consulta e sinais observáveis.")
-    cols[3].metric("Prontidão do plano", f"{int(_number(row.get('validation_readiness_index')))}%", help="Preenchimento do contrato de validação; não é validação comercial.")
-    if _text(row.get("url")):
-        actions = st.columns([1, 1, 3])
-        actions[0].link_button("Abrir original", _text(row.get("url")), use_container_width=True)
-        if actions[1].button(
-            "Trabalhar agora",
-            type="primary",
-            use_container_width=True,
-            key=f"work_now_{widget_scope}_{opportunity_key}",
-        ):
-            st.session_state["selected_opportunity_key"] = str(row["opportunity_key"])
-            st.toast("Sinal selecionado. Abra a aba Decisão.", icon="🎯")
+    cols[0].metric(
+        "Score de descoberta",
+        f"{_number(row.get('discovery_score')):.1f}",
+        help="Heurística do sinal. Não mede mercado, preço ou receita.",
+    )
+    cols[1].metric(
+        "Aderência ao Henrique",
+        _text(row.get("personal_fit_label"), "Não demonstrado"),
+        help="Inferência por correspondência com habilidades conhecidas.",
+    )
+    cols[2].metric(
+        "Rastreabilidade",
+        f"{int(_number(row.get('traceability_index')))}%",
+        help="Completude de origem, URL, consulta e sinais observáveis.",
+    )
+    cols[3].metric(
+        "Prontidão do plano",
+        f"{int(_number(row.get('validation_readiness_index')))}%",
+        help="Preenchimento do contrato de validação; não é validação comercial.",
+    )
 
+    actions = st.columns([1.1, 1.1, 1.25, 2.5])
+    if actions[0].button(
+        "Ver oportunidade",
+        width="stretch",
+        key=f"view_now_{widget_scope}_{opportunity_key}",
+    ):
+        _activate_opportunity(opportunity_key)
+        st.rerun()
+    if _text(row.get("url")):
+        actions[1].link_button(
+            "Abrir original",
+            _text(row.get("url")),
+            width="stretch",
+        )
+    else:
+        actions[1].button(
+            "Original indisponível",
+            disabled=True,
+            width="stretch",
+            key=f"missing_now_{widget_scope}_{opportunity_key}",
+        )
+    if actions[2].button(
+        "Trabalhar agora",
+        type="primary",
+        width="stretch",
+        key=f"work_now_{widget_scope}_{opportunity_key}",
+    ):
+        _activate_opportunity(opportunity_key)
+        st.toast("Sinal selecionado. Abra a aba Decisão.", icon="🎯")
 
 def main() -> None:
     st.set_page_config(
@@ -617,7 +1017,7 @@ def main() -> None:
     with st.sidebar:
         st.markdown("## 📡 Opportunity Radar")
         st.caption("Do sinal público à possível primeira receita")
-        if st.button("Atualizar dados", type="primary", use_container_width=True):
+        if st.button("Atualizar dados", type="primary", width="stretch"):
             st.cache_data.clear()
             st.rerun()
         st.divider()
@@ -725,6 +1125,17 @@ def main() -> None:
         else:
             selected = next_row.iloc[0]
             _render_decision_card(selected, widget_scope="home")
+            if (
+                _text(st.session_state.get("selected_opportunity_key"))
+                == str(selected["opportunity_key"])
+                and st.session_state.get("show_opportunity_details", False)
+            ):
+                _render_opportunity_detail(
+                    selected,
+                    translations,
+                    _workspace_for(workspaces, str(selected["opportunity_key"])),
+                    widget_scope="home",
+                )
             _render_knowledge_block("", "Dado coletado", f"Fonte: {_text(selected.get('source'))}; título e URL preservados.")
             _render_knowledge_block("evidence", "Evidência atual", f"Rastreabilidade {int(_number(selected.get('traceability_index')))}%; sinais: {_text(selected.get('pain_categories'), 'não informados')}.")
             _render_knowledge_block("inference", "Inferência do sistema", f"Aderência ao Henrique: {_text(selected.get('personal_fit_label'))}. Base: {_text(selected.get('personal_fit_signals'), 'nenhum sinal identificado')}.")
@@ -759,6 +1170,13 @@ def main() -> None:
             key = str(row["opportunity_key"])
             workspace = _workspace_for(workspaces, key)
             _render_decision_card(row, widget_scope="decision")
+            with st.expander("Ver conteúdo e contexto da oportunidade"):
+                _render_opportunity_detail(
+                    row,
+                    translations,
+                    workspace,
+                    widget_scope="decision_detail",
+                )
             _render_lifecycle(_text(workspace.get("lifecycle_state"), "detected"))
             detail_cols = st.columns(2)
             with detail_cols[0]:
@@ -781,18 +1199,26 @@ def main() -> None:
             if opportunity_evidence.empty:
                 st.info("Nenhuma evidência comercial registrada.")
             else:
-                st.dataframe(opportunity_evidence, use_container_width=True, hide_index=True)
+                st.dataframe(opportunity_evidence, width="stretch", hide_index=True)
             st.markdown("### Ações e resultados")
             opportunity_events = events[events["opportunity_key"].astype(str).eq(key)] if not events.empty else pd.DataFrame()
             if opportunity_events.empty:
                 st.info("Nenhum evento de validação registrado.")
             else:
-                st.dataframe(opportunity_events, use_container_width=True, hide_index=True)
+                st.dataframe(opportunity_events, width="stretch", hide_index=True)
 
     with opportunities_tab:
         st.header("Sinais e oportunidades")
-        st.caption("A lista distingue score de descoberta, aderência pessoal, rastreabilidade, etapa e decisão humana.")
-        _render_opportunity_table(filtered)
+        st.caption(
+            "Abra qualquer oportunidade sem sair da página. O título, o conteúdo "
+            "original, a fonte e as hipóteses ficam acessíveis no mesmo fluxo."
+        )
+        _render_opportunity_browser(
+            filtered,
+            translations,
+            workspaces,
+            widget_scope="opportunities",
+        )
 
     with curation_tab:
         st.header("Curadoria humana")
@@ -807,7 +1233,7 @@ def main() -> None:
             detail[2].metric("Aderência", _text(row.get("personal_fit_label"), "—"))
             detail[3].metric("Etapa", _text(row.get("lifecycle_label"), "—"))
             if url:
-                st.link_button("Abrir conteúdo original", url, use_container_width=True)
+                st.link_button("Abrir conteúdo original", url, width="stretch")
             current_status = _text(row.get("curation_status"), "unreviewed")
             current_label = CURATION_LABELS.get(current_status, CURATION_LABELS["unreviewed"])
             status_label = st.radio(
@@ -823,7 +1249,7 @@ def main() -> None:
                 placeholder="Por que é válida, precisa de análise ou é falso positivo?",
                 key=f"curation_notes_{note_key}",
             )
-            if st.button("Salvar curadoria", type="primary", use_container_width=True, disabled=not bool(url)):
+            if st.button("Salvar curadoria", type="primary", width="stretch", disabled=not bool(url)):
                 save_curation(CURATION_DB, url, LABEL_TO_STATUS[status_label], notes)
                 st.cache_data.clear()
                 st.toast("Curadoria salva.", icon="✅")
@@ -851,7 +1277,7 @@ def main() -> None:
                 y=alt.Y("Classe:N", sort="-x", title=None),
                 tooltip=["Classe", "Quantidade"],
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
         st.markdown("### Pipeline de validação")
         if workspaces.empty:
             st.info("Nenhuma oportunidade entrou no ciclo de validação.")
@@ -865,7 +1291,7 @@ def main() -> None:
                 .rename("oportunidades")
                 .reset_index()
             )
-            st.dataframe(pipeline, use_container_width=True, hide_index=True)
+            st.dataframe(pipeline, width="stretch", hide_index=True)
 
     with queries_tab:
         st.header("Consultas e variações")
@@ -874,12 +1300,12 @@ def main() -> None:
         if dataset.expansion_runs.empty:
             st.info("Nenhuma execução de consulta encontrada.")
         else:
-            st.dataframe(dataset.expansion_runs, use_container_width=True, hide_index=True, height=420)
+            st.dataframe(dataset.expansion_runs, width="stretch", hide_index=True, height=420)
         st.subheader("Variações")
         if dataset.variations.empty:
             st.info("Nenhuma variação encontrada.")
         else:
-            st.dataframe(dataset.variations, use_container_width=True, hide_index=True, height=520)
+            st.dataframe(dataset.variations, width="stretch", hide_index=True, height=520)
 
     with executions_tab:
         st.header("Execuções")
@@ -887,22 +1313,28 @@ def main() -> None:
         if dataset.collection_runs.empty:
             st.info("Nenhuma collection_run encontrada.")
         else:
-            st.dataframe(dataset.collection_runs, use_container_width=True, hide_index=True)
+            st.dataframe(dataset.collection_runs, width="stretch", hide_index=True)
         if not dataset.source_sync_runs.empty:
             st.subheader("Sincronizações por fonte")
-            st.dataframe(dataset.source_sync_runs, use_container_width=True, hide_index=True)
+            st.dataframe(dataset.source_sync_runs, width="stretch", hide_index=True)
 
     with technical_tab:
         st.header("Área técnica")
         st.caption("Inventário dos bancos operacionais. SQLite, cache, logs e segredos permanecem fora do Git.")
         st.code(f"Dados: {DATA_DIR}\nCuradoria: {CURATION_DB}\nProduto: {PRODUCT_DB}")
         st.subheader("Bancos")
-        st.dataframe(dataset.databases, use_container_width=True, hide_index=True)
+        st.dataframe(dataset.databases, width="stretch", hide_index=True)
         st.subheader("Inventário de tabelas")
         if dataset.inventory.empty:
             st.info("Nenhuma tabela encontrada.")
         else:
-            st.dataframe(dataset.inventory, use_container_width=True, hide_index=True, height=540)
+            st.dataframe(dataset.inventory, width="stretch", hide_index=True, height=540)
+
+    st.markdown(
+        f'<div class="build-footer">Opportunity Radar · Product System V{APP_VERSION} · '
+        f'commit {_git_commit_short()} · Runner V2 preservado</div>',
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":

@@ -2,7 +2,17 @@
 
 ## Unreleased
 
-- Fix duplicate Streamlit widget IDs by assigning stable keys to opportunity action buttons.
+### Landing e navegação
+
+- títulos de oportunidades agora abrem detalhes dentro da landing;
+- botão `Ver oportunidade` disponível em cada card;
+- painel com conteúdo original, fonte, score, personal fit, rastreabilidade e hipóteses;
+- ações claras para abrir a publicação e trabalhar na oportunidade;
+- destaque visual da oportunidade selecionada;
+- texto técnico legado removido da área visível;
+- versão e commit exibidos discretamente no rodapé;
+- argumentos visuais atualizados para a API atual do Streamlit;
+- teste de regressão para navegação e chaves únicas.
 
 ### Produto
 
