@@ -4,8 +4,16 @@
 
 ### Landing e navegação
 
+- Product System V3 organizado em Radar, Oportunidade e Validação;
+- áreas avançadas removidas da jornada principal;
+- filtros recolhidos para reduzir carga visual;
+- callbacks substituem reruns explícitos nos cliques de navegação;
+- seleção persiste ao abrir uma oportunidade ou iniciar validação;
+- proteção `notranslate` aplicada aos elementos dinâmicos críticos;
+- etapas responsivas deixam de depender de rolagem horizontal;
+- AppTests reais validam cliques, mudança de etapa e preservação de estado;
 - títulos de oportunidades agora abrem detalhes dentro da landing;
-- botão `Ver oportunidade` disponível em cada card;
+- botão `Analisar` disponível em cada card;
 - painel com conteúdo original, fonte, score, personal fit, rastreabilidade e hipóteses;
 - ações claras para abrir a publicação e trabalhar na oportunidade;
 - destaque visual da oportunidade selecionada;

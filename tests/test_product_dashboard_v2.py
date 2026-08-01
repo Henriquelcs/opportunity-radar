@@ -6,14 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_dashboard_v2_preserves_runner_and_business_areas() -> None:
+def test_dashboard_v3_preserves_runner_and_business_areas() -> None:
     app = (ROOT / "src/dashboard/product_app.py").read_text(encoding="utf-8")
     assert "Da dor pública à <span>próxima decisão.</span>" in app
     assert "Score de descoberta ≠ mercado" in app
-    assert '"Início"' in app
-    assert '"Decisão"' in app
-    assert '"Validação"' in app
-    assert '"Oportunidades"' in app
+    assert '"1. Radar"' in app
+    assert '"2. Oportunidade"' in app
+    assert '"3. Validação"' in app
     assert '"Curadoria"' in app
     assert '"Métricas"' in app
     assert '"Consultas"' in app
@@ -53,13 +52,14 @@ def test_readme_states_product_boundary() -> None:
     assert "python scripts/run_colab.py --mode all" in content
 
 
-def test_decision_card_buttons_have_stable_unique_keys() -> None:
+def test_decision_card_buttons_use_callbacks_and_stable_unique_keys() -> None:
     app = (ROOT / "src/dashboard/product_app.py").read_text(encoding="utf-8")
     assert "def _render_decision_card(row: pd.Series, *, widget_scope: str)" in app
     assert 'key=f"view_now_{widget_scope}_{opportunity_key}"' in app
     assert 'key=f"work_now_{widget_scope}_{opportunity_key}"' in app
+    assert "on_click=_open_opportunity" in app
+    assert "on_click=_start_validation" in app
     assert '_render_decision_card(selected, widget_scope="home")' in app
-    assert '_render_decision_card(row, widget_scope="decision")' in app
 
 
 def test_opportunity_browser_opens_title_and_details() -> None:
@@ -68,18 +68,21 @@ def test_opportunity_browser_opens_title_and_details() -> None:
     assert "def _render_opportunity_detail(" in app
     assert 'key=f"title_open_{widget_scope}_{key}"' in app
     assert 'key=f"view_open_{widget_scope}_{key}"' in app
-    assert '"Ver oportunidade"' in app
+    assert '"Analisar"' in app
     assert '"Abrir publicação original"' in app
-    assert '"Trabalhar nesta oportunidade"' in app
+    assert '"Começar validação"' in app
     assert "Conteúdo original preservado" in app
-    assert 'widget_scope="opportunities"' in app
+    assert 'widget_scope="radar"' in app
 
 
-def test_visual_finish_hides_legacy_copy_and_identifies_build() -> None:
+def test_visual_finish_protects_dynamic_content_and_identifies_build() -> None:
     entrypoint = (ROOT / "src/dashboard/app.py").read_text(encoding="utf-8")
     app = (ROOT / "src/dashboard/product_app.py").read_text(encoding="utf-8")
     assert not entrypoint.lstrip().startswith('"""')
     assert "Marcadores legados preservados" not in entrypoint
-    assert 'APP_VERSION = "2.1.0"' in app
+    assert 'APP_VERSION = "3.0.0"' in app
     assert "Product System V{APP_VERSION}" in app
+    assert '<meta name="google" content="notranslate">' in app
+    assert 'translate="no"' in app
+    assert "grid-template-columns:repeat(auto-fit" in app
     assert "use_container_width=True" not in app

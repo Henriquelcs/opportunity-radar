@@ -117,18 +117,19 @@ A camada de produto registra:
 
 ## Dashboard
 
-A landing page apresenta:
+A Product System V3 conduz a jornada em três etapas:
 
-- próxima decisão recomendada;
-- score de descoberta com aviso de limite;
-- aderência ao perfil do Henrique;
-- rastreabilidade da origem;
-- ciclo de vida até primeira receita;
-- contrato de validação;
-- registro de evidências, eventos, preço, custo, horas e receita;
-- original e tradução em camadas separadas;
-- baseline de precision e falsos positivos;
-- áreas técnicas já existentes.
+1. **Radar:** localizar e escolher um sinal público.
+2. **Oportunidade:** ler o original e separar evidência, inferência e hipótese.
+3. **Validação:** definir o menor teste e registrar fatos comerciais observáveis.
+
+Busca e filtros avançados ficam na lateral. Curadoria, métricas, consultas,
+execuções e inventário técnico permanecem disponíveis em uma área secundária,
+sem competir com a jornada principal.
+
+Os botões usam callbacks com estado persistente, a interface possui proteção
+contra tradução automática nos elementos dinâmicos e o fluxo de clique é
+validado com `streamlit.testing.v1.AppTest`.
 
 ## Google Colab
 
